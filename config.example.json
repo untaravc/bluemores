@@ -1,0 +1,40 @@
+[
+  {
+    "group": "Server Tries",
+    "key": "change-me-exporter-key",
+    "apps": [
+      {
+        "name": "Processor",
+        "type": "processor",
+        "source": "https://mon.tries.co.id/mon/proc",
+        "schedule": "* * * * *",
+        "threshold": "300",
+        "notification": "https://discord.com/api/webhooks/xxx"
+      },
+      {
+        "name": "Memory",
+        "type": "memory",
+        "source": "https://mon.tries.co.id/mon/mem",
+        "schedule": "*/5 * * * *",
+        "threshold": "3000",
+        "notification": "https://discord.com/api/webhooks/xxx"
+      },
+      {
+        "name": "Disk Free",
+        "type": "disk_free",
+        "source": "https://mon.tries.co.id/mon/dfree",
+        "schedule": "0 0 * * *",
+        "threshold": "100",
+        "notification": "https://discord.com/api/webhooks/xxx"
+      },
+      {
+        "name": "BE Health",
+        "type": "health",
+        "source": "https://tries.co.id/health",
+        "schedule": "0 0 * * *",
+        "threshold": "true",
+        "notification": "https://discord.com/api/webhooks/xxx"
+      }
+    ]
+  }
+]

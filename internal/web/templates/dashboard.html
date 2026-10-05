@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bluemores Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --text:#1b2333; --muted:#6b7487; --border:#dfe3ec; --accent:#2f6fed;
+          --ok:#1f9d55; --alert:#d93f3f; --error:#d98a1f; --none:#9aa3b5; --track:#e9edf5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1420; --card:#171e2e; --text:#e6eaf2; --muted:#8c95a8; --border:#26304a; --accent:#5b8cff;
+            --ok:#3ccf7d; --alert:#ff6b6b; --error:#ffb347; --none:#5c667c; --track:#222b3f; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+           padding:12px 16px; background:var(--card); border-bottom:1px solid var(--border); }
+  header h1 { font-size:17px; margin:0; margin-right:auto; }
+  .summary { display:flex; gap:10px; font-size:13px; color:var(--muted); }
+  .summary b { color:var(--text); }
+  select, .btn { padding:6px 10px; border-radius:7px; border:1px solid var(--border); background:var(--card); color:var(--text); font:inherit; cursor:pointer; text-decoration:none; }
+  .btn:hover { border-color:var(--accent); }
+  main { max-width:1280px; margin:0 auto; padding:16px; }
+  h2 { font-size:15px; margin:22px 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; cursor:pointer; min-width:0;
+          border-left:4px solid var(--none); transition:border-color .15s; }
+  .card:hover { border-color:var(--accent); }
+  .card.ok { border-left-color:var(--ok); } .card.alert { border-left-color:var(--alert); } .card.error { border-left-color:var(--error); }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:99px; color:#fff; background:var(--none); text-transform:uppercase; flex-shrink:0; }
+  .badge.ok { background:var(--ok); } .badge.alert { background:var(--alert); } .badge.error { background:var(--error); }
+  .value { font-size:24px; font-weight:700; margin:6px 0 2px; font-variant-numeric:tabular-nums; }
+  .value small { font-size:13px; color:var(--muted); font-weight:500; }
+  .bar { height:6px; background:var(--track); border-radius:99px; overflow:hidden; margin:6px 0; }
+  .bar > i { display:block; height:100%; background:var(--accent); }
+  .meta { color:var(--muted); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .msg { font-size:12px; color:var(--alert); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .card.error .msg { color:var(--error); }
+  .spark { height:48px; margin-top:8px; }
+  dialog { width:min(960px, calc(100vw - 32px)); border:1px solid var(--border); border-radius:14px; background:var(--card); color:var(--text); padding:18px; }
+  dialog::backdrop { background:rgba(0,0,0,.45); }
+  .big { height:340px; margin-top:12px; }
+  .empty { color:var(--muted); padding:40px 0; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔵 Bluemores</h1>
+  <div class="summary" id="summary"></div>
+  <select id="range" title="History range">
+    <option value="1">1 hour</option>
+    <option value="6">6 hours</option>
+    <option value="24" selected>24 hours</option>
+    <option value="168">7 days</option>
+    <option value="720">30 days</option>
+  </select>
+  <button class="btn" id="refresh">Refresh</button>
+  <a class="btn" href="/logout">Logout</a>
+</header>
+<main id="main"><div class="empty">Loading…</div></main>
+
+<dialog id="detail">
+  <div class="row">
+    <div>
+      <div class="name" id="d-title"></div>
+      <div class="meta" id="d-meta"></div>
+    </div>
+    <div style="display:flex; gap:8px">
+      <button class="btn" id="d-check">Check now</button>
+      <button class="btn" id="d-close">Close</button>
+    </div>
+  </div>
+  <div class="big"><canvas id="d-chart"></canvas></div>
+</dialog>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const TYPE_LABEL = { processor:'CPU', memory:'Memory', disk_free:'Disk free', health:'Health' };
+const charts = {};
+let overview = [];
+let detailApp = null, detailChart = null;
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (res.status === 401) { location.href = '/login'; throw new Error('unauthorized'); }
+  return res.json();
+}
+
+function ago(ts) {
+  const s = Math.round((Date.now() - new Date(ts)) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.round(s / 60) + 'm ago';
+  if (s < 86400) return Math.round(s / 3600) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
+}
+
+function fmt(app, r) {
+  if (!r) return { value: '—', pct: null };
+  if (r.status === 'error') return { value: 'Error', pct: null };
+  if (app.type === 'health') return { value: r.value ? 'UP' : 'DOWN', sub: r.latency_ms + ' ms', pct: null };
+  const pct = r.total ? (r.value / r.total) * 100 : null;
+  const unit = r.unit ? ' ' + r.unit : '';
+  if (app.type === 'disk_free') return { value: r.value.toLocaleString(), sub: `${unit} free of ${r.total.toLocaleString()}${unit}`, pct };
+  return { value: r.value.toLocaleString(), sub: `/ ${r.total.toLocaleString()}${unit} · ${pct?.toFixed(0)}%`, pct };
+}
+
+function render() {
+  const counts = { ok: 0, alert: 0, error: 0 };
+  overview.forEach(g => g.apps.forEach(a => a.latest && counts[a.latest.status]++));
+  $('#summary').innerHTML = `<span><b>${counts.ok}</b> ok</span><span><b>${counts.alert}</b> alert</span><span><b>${counts.error}</b> error</span>`;
+
+  if (!overview.length) { $('#main').innerHTML = '<div class="empty">No apps configured.</div>'; return; }
+  $('#main').innerHTML = overview.map(g => `
+    <h2>${esc(g.group)}</h2>
+    <div class="grid">${g.apps.map(a => {
+      const r = a.latest, st = r?.status || 'none', f = fmt(a, r);
+      return `<div class="card ${st}" data-id="${esc(a.id)}">
+        <div class="row"><span class="name">${esc(a.name)}</span><span class="badge ${st}">${r ? st : 'pending'}</span></div>
+        <div class="value">${esc(f.value)} <small>${esc(f.sub || '')}</small></div>
+        ${f.pct != null ? `<div class="bar"><i style="width:${Math.min(100, f.pct)}%; background:${css('--' + (st === 'none' ? 'accent' : st === 'ok' ? 'accent' : st))}"></i></div>` : ''}
+        <div class="meta">${esc(TYPE_LABEL[a.type])} · threshold ${esc(a.threshold)} · ${r ? ago(r.created_at) : 'never checked'}</div>
+        ${r && r.status !== 'ok' && r.message ? `<div class="msg" title="${esc(r.message)}">${esc(r.message)}</div>` : ''}
+        <div class="spark"><canvas></canvas></div>
+      </div>`;
+    }).join('')}</div>`).join('');
+
+  document.querySelectorAll('.card').forEach(el => {
+    el.onclick = () => openDetail(el.dataset.id);
+    loadSpark(el.dataset.id, el.querySelector('canvas'));
+  });
+}
+
+function findApp(id) {
+  for (const g of overview) for (const a of g.apps) if (a.id === id) return { ...a, group: g.group };
+}
+
+function chartConfig(app, rows, mini) {
+  const accent = css('--accent'), grid = css('--border'), muted = css('--muted');
+  const labels = rows.map(r => new Date(r.created_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }));
+  const datasets = [{
+    label: TYPE_LABEL[app.type],
+    data: rows.map(r => r.status === 'error' ? null : (app.type === 'health' ? r.latency_ms : r.value)),
+    borderColor: accent, backgroundColor: accent + '22', fill: true, tension: .3, borderWidth: mini ? 1.5 : 2,
+    pointRadius: mini ? 0 : rows.map(r => r.status === 'ok' ? 0 : 3),
+    pointBackgroundColor: rows.map(r => css('--' + r.status)),
+    spanGaps: false,
+  }];
+  if (app.type !== 'health') {
+    datasets.push({ label: 'Threshold', data: rows.map(() => Number(app.threshold)), borderColor: css('--alert'),
+                    borderDash: [5, 4], borderWidth: 1, pointRadius: 0, fill: false });
+  }
+  return {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: !mini, labels: { color: muted } }, tooltip: { enabled: !mini } },
+      scales: mini ? { x: { display: false }, y: { display: false } } : {
+        x: { ticks: { color: muted, maxTicksLimit: 8 }, grid: { color: grid } },
+        y: { ticks: { color: muted }, grid: { color: grid },
+             title: { display: true, color: muted, text: app.type === 'health' ? 'latency (ms)' : (rows.at(-1)?.unit || '') } },
+      },
+    },
+  };
+}
+
+async function loadSpark(id, canvas) {
+  const app = findApp(id);
+  const res = await api(`/api/history/${encodeURIComponent(id)}?hours=${$('#range').value}`);
+  charts[id]?.destroy();
+  charts[id] = new Chart(canvas, chartConfig(app, res.data || [], true));
+}
+
+async function openDetail(id) {
+  detailApp = findApp(id);
+  $('#d-title').textContent = `${detailApp.group} / ${detailApp.name}`;
+  $('#d-meta').textContent = `${TYPE_LABEL[detailApp.type]} · ${detailApp.source} · schedule "${detailApp.schedule}" · threshold ${detailApp.threshold}`;
+  if (!$('#detail').open) $('#detail').showModal();
+  const res = await api(`/api/history/${encodeURIComponent(id)}?hours=${$('#range').value}`);
+  detailChart?.destroy();
+  detailChart = new Chart($('#d-chart'), chartConfig(detailApp, res.data || [], false));
+}
+
+async function load() {
+  const res = await api('/api/overview');
+  overview = res.data || [];
+  render();
+}
+
+$('#refresh').onclick = load;
+$('#range').onchange = () => { load(); if ($('#detail').open) openDetail(detailApp.id); };
+$('#d-close').onclick = () => $('#detail').close();
+$('#d-check').onclick = async () => {
+  const btn = $('#d-check'); btn.disabled = true; btn.textContent = 'Checking…';
+  try { await api(`/api/check/${encodeURIComponent(detailApp.id)}`, { method: 'POST' }); await load(); await openDetail(detailApp.id); }
+  finally { btn.disabled = false; btn.textContent = 'Check now'; }
+};
+load();
+setInterval(() => { if (!$('#detail').open) load(); }, 30000);
+</script>
+</body>
+</html>
