@@ -1,6 +1,8 @@
 [
   {
     "group": "Server Tries",
+    "description": "Server Tries",
+    "location": "GCP",
     "key": "change-me-exporter-key",
     "apps": [
       {

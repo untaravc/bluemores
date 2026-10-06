@@ -4,3 +4,5 @@ bluemores
 *.db-wal
 .env
 config.json
+bluemores-linux-*
+.idea

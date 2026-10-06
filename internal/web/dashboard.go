@@ -47,6 +47,7 @@ func RegisterDashboard(app *fiber.App, passphrase string, secureCookie bool, mon
 	api.Get("/overview", d.overview)
 	api.Get("/history/:id", d.history)
 	api.Post("/check/:id", d.checkNow)
+	api.Post("/purge", limiter.New(limiter.Config{Max: 5, Expiration: time.Minute}), d.purge)
 }
 
 func page(name string) fiber.Handler {
@@ -131,8 +132,10 @@ type appView struct {
 }
 
 type groupView struct {
-	Group string    `json:"group"`
-	Apps  []appView `json:"apps"`
+	Group       string    `json:"group"`
+	Description string    `json:"description"`
+	Location    string    `json:"location"`
+	Apps        []appView `json:"apps"`
 }
 
 func (d *Dashboard) overview(c *fiber.Ctx) error {
@@ -142,7 +145,7 @@ func (d *Dashboard) overview(c *fiber.Ctx) error {
 	}
 	out := []groupView{}
 	for _, g := range d.mon.Groups() {
-		gv := groupView{Group: g.Group, Apps: []appView{}}
+		gv := groupView{Group: g.Group, Description: g.Description, Location: g.Location, Apps: []appView{}}
 		for _, a := range g.Apps {
 			av := appView{ID: a.ID, Name: a.Name, Type: a.Type, Source: a.Source, Schedule: a.Schedule, Threshold: a.Threshold}
 			if r, ok := latest[a.ID]; ok {
@@ -177,4 +180,26 @@ func (d *Dashboard) checkNow(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": false, "message": "unknown app"})
 	}
 	return c.JSON(fiber.Map{"status": true, "data": d.mon.Check(app)})
+}
+
+// purge deletes results older than 7 or 30 days, after re-confirming the passphrase.
+func (d *Dashboard) purge(c *fiber.Ctx) error {
+	var body struct {
+		Days       int    `json:"days"`
+		Passphrase string `json:"passphrase"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": false, "message": "invalid request"})
+	}
+	if body.Days != 7 && body.Days != 30 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": false, "message": "days must be 7 or 30"})
+	}
+	if subtle.ConstantTimeCompare([]byte(body.Passphrase), []byte(d.passphrase)) != 1 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": false, "message": "wrong passphrase"})
+	}
+	n, err := d.store.Prune(time.Now().AddDate(0, 0, -body.Days))
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"status": true, "data": fiber.Map{"deleted": n}})
 }

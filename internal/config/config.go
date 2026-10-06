@@ -33,9 +33,11 @@ type App struct {
 }
 
 type Group struct {
-	Group string `json:"group"`
-	Key   string `json:"key,omitempty"`
-	Apps  []App  `json:"apps"`
+	Group       string `json:"group"`
+	Description string `json:"description,omitempty"`
+	Location    string `json:"location,omitempty"`
+	Key         string `json:"key,omitempty"`
+	Apps        []App  `json:"apps"`
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)

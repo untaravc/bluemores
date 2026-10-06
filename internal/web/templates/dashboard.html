@@ -22,7 +22,10 @@
   select, .btn { padding:6px 10px; border-radius:7px; border:1px solid var(--border); background:var(--card); color:var(--text); font:inherit; cursor:pointer; text-decoration:none; }
   .btn:hover { border-color:var(--accent); }
   main { max-width:1280px; margin:0 auto; padding:16px; }
-  h2 { font-size:15px; margin:22px 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .group-head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin:22px 0 10px; }
+  h2 { font-size:15px; margin:0; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .group-desc { font-size:13px; color:var(--muted); }
+  .loc { font-size:11px; font-weight:600; padding:1px 8px; border-radius:99px; border:1px solid var(--border); color:var(--text); }
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
   .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; cursor:pointer; min-width:0;
           border-left:4px solid var(--none); transition:border-color .15s; }
@@ -44,6 +47,19 @@
   dialog::backdrop { background:rgba(0,0,0,.45); }
   .big { height:340px; margin-top:12px; }
   .empty { color:var(--muted); padding:40px 0; text-align:center; }
+  .btn.danger { color:var(--alert); }
+  .btn.danger:hover { border-color:var(--alert); }
+  .btn.danger.solid { background:var(--alert); border-color:var(--alert); color:#fff; }
+  .btn:disabled { opacity:.6; cursor:default; }
+  dialog.small { width:min(420px, calc(100vw - 32px)); }
+  .field { display:flex; flex-direction:column; gap:6px; margin-top:14px; }
+  .field label { font-size:13px; color:var(--muted); }
+  .field input[type=password] { padding:8px 10px; border-radius:7px; border:1px solid var(--border); background:var(--bg); color:var(--text); font:inherit; }
+  .choices { display:flex; gap:8px; }
+  .choices label { flex:1; display:flex; align-items:center; gap:6px; padding:8px 10px; border:1px solid var(--border); border-radius:7px; cursor:pointer; color:var(--text); }
+  .choices label:has(input:checked) { border-color:var(--alert); }
+  .p-error { color:var(--alert); font-size:13px; min-height:20px; margin-top:8px; }
+  .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:6px; }
 </style>
 </head>
 <body>
@@ -58,6 +74,7 @@
     <option value="720">30 days</option>
   </select>
   <button class="btn" id="refresh">Refresh</button>
+  <button class="btn danger" id="purge-open">Delete data</button>
   <a class="btn" href="/logout">Logout</a>
 </header>
 <main id="main"><div class="empty">Loading…</div></main>
@@ -74,6 +91,29 @@
     </div>
   </div>
   <div class="big"><canvas id="d-chart"></canvas></div>
+</dialog>
+
+<dialog id="purge" class="small">
+  <form id="p-form">
+    <div class="name">Delete old data</div>
+    <div class="meta" style="white-space:normal">Results older than the selected age are permanently deleted for all apps.</div>
+    <div class="field">
+      <label>Delete data older than</label>
+      <div class="choices">
+        <label><input type="radio" name="days" value="7"> 7 days</label>
+        <label><input type="radio" name="days" value="30" checked> 30 days</label>
+      </div>
+    </div>
+    <div class="field">
+      <label for="p-pass">Passphrase</label>
+      <input type="password" id="p-pass" autocomplete="current-password" required>
+    </div>
+    <div class="p-error" id="p-error"></div>
+    <div class="actions">
+      <button type="button" class="btn" id="p-cancel">Cancel</button>
+      <button type="submit" class="btn danger solid" id="p-submit">Delete</button>
+    </div>
+  </form>
 </dialog>
 
 <script>
@@ -105,7 +145,11 @@ function fmt(app, r) {
   if (app.type === 'health') return { value: r.value ? 'UP' : 'DOWN', sub: r.latency_ms + ' ms', pct: null };
   const pct = r.total ? (r.value / r.total) * 100 : null;
   const unit = r.unit ? ' ' + r.unit : '';
-  if (app.type === 'disk_free') return { value: r.value.toLocaleString(), sub: `${unit} free of ${r.total.toLocaleString()}${unit}`, pct };
+  if (app.type === 'disk_free') {
+    // Value is free space; the bar shows used space so a full bar means a full disk.
+    const used = r.total ? 100 - pct : null;
+    return { value: r.value.toLocaleString(), sub: `${unit} free of ${r.total.toLocaleString()}${unit} · ${used?.toFixed(0)}% used`, pct: used };
+  }
   return { value: r.value.toLocaleString(), sub: `/ ${r.total.toLocaleString()}${unit} · ${pct?.toFixed(0)}%`, pct };
 }
 
@@ -116,7 +160,11 @@ function render() {
 
   if (!overview.length) { $('#main').innerHTML = '<div class="empty">No apps configured.</div>'; return; }
   $('#main').innerHTML = overview.map(g => `
-    <h2>${esc(g.group)}</h2>
+    <div class="group-head">
+      <h2>${esc(g.group)}</h2>
+      ${g.location ? `<span class="loc" title="Location">📍 ${esc(g.location)}</span>` : ''}
+      ${g.description ? `<span class="group-desc">${esc(g.description)}</span>` : ''}
+    </div>
     <div class="grid">${g.apps.map(a => {
       const r = a.latest, st = r?.status || 'none', f = fmt(a, r);
       return `<div class="card ${st}" data-id="${esc(a.id)}">
@@ -136,7 +184,7 @@ function render() {
 }
 
 function findApp(id) {
-  for (const g of overview) for (const a of g.apps) if (a.id === id) return { ...a, group: g.group };
+  for (const g of overview) for (const a of g.apps) if (a.id === id) return { ...a, group: g.group, location: g.location };
 }
 
 function chartConfig(app, rows, mini) {
@@ -180,7 +228,7 @@ async function loadSpark(id, canvas) {
 async function openDetail(id) {
   detailApp = findApp(id);
   $('#d-title').textContent = `${detailApp.group} / ${detailApp.name}`;
-  $('#d-meta').textContent = `${TYPE_LABEL[detailApp.type]} · ${detailApp.source} · schedule "${detailApp.schedule}" · threshold ${detailApp.threshold}`;
+  $('#d-meta').textContent = `${detailApp.location ? detailApp.location + ' · ' : ''}${TYPE_LABEL[detailApp.type]} · ${detailApp.source} · schedule "${detailApp.schedule}" · threshold ${detailApp.threshold}`;
   if (!$('#detail').open) $('#detail').showModal();
   const res = await api(`/api/history/${encodeURIComponent(id)}?hours=${$('#range').value}`);
   detailChart?.destroy();
@@ -201,8 +249,34 @@ $('#d-check').onclick = async () => {
   try { await api(`/api/check/${encodeURIComponent(detailApp.id)}`, { method: 'POST' }); await load(); await openDetail(detailApp.id); }
   finally { btn.disabled = false; btn.textContent = 'Check now'; }
 };
+$('#purge-open').onclick = () => {
+  $('#p-form').reset(); $('#p-error').textContent = '';
+  $('#purge').showModal(); $('#p-pass').focus();
+};
+$('#p-cancel').onclick = () => $('#purge').close();
+$('#p-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const days = Number(new FormData(e.target).get('days'));
+  const btn = $('#p-submit'); btn.disabled = true; btn.textContent = 'Deleting…';
+  $('#p-error').textContent = '';
+  try {
+    const res = await api('/api/purge', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ days, passphrase: $('#p-pass').value }) });
+    if (!res.status) { $('#p-error').textContent = res.message || 'Delete failed'; return; }
+    $('#purge').close();
+    await load();
+    alertDeleted(res.data.deleted, days);
+  } catch (err) {
+    $('#p-error').textContent = err.message === 'unauthorized' ? '' : 'Delete failed';
+  } finally { btn.disabled = false; btn.textContent = 'Delete'; }
+};
+function alertDeleted(n, days) {
+  $('#summary').insertAdjacentHTML('beforeend', `<span id="p-done">· deleted <b>${n}</b> results older than ${days} days</span>`);
+  setTimeout(() => $('#p-done')?.remove(), 6000);
+}
+
 load();
-setInterval(() => { if (!$('#detail').open) load(); }, 30000);
+setInterval(() => { if (!$('#detail').open && !$('#purge').open) load(); }, 30000);
 </script>
 </body>
 </html>
