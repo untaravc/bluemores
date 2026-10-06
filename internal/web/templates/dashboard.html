@@ -171,7 +171,7 @@ function render() {
         <div class="row"><span class="name">${esc(a.name)}</span><span class="badge ${st}">${r ? st : 'pending'}</span></div>
         <div class="value">${esc(f.value)} <small>${esc(f.sub || '')}</small></div>
         ${f.pct != null ? `<div class="bar"><i style="width:${Math.min(100, f.pct)}%; background:${css('--' + (st === 'none' ? 'accent' : st === 'ok' ? 'accent' : st))}"></i></div>` : ''}
-        <div class="meta">${esc(TYPE_LABEL[a.type])} · threshold ${esc(a.threshold)} · ${r ? ago(r.created_at) : 'never checked'}</div>
+        <div class="meta">${esc(TYPE_LABEL[a.type])} · ${esc(thresholdLabel(a))} · ${r ? ago(r.created_at) : 'never checked'}</div>
         ${r && r.status !== 'ok' && r.message ? `<div class="msg" title="${esc(r.message)}">${esc(r.message)}</div>` : ''}
         <div class="spark"><canvas></canvas></div>
       </div>`;
@@ -183,6 +183,10 @@ function render() {
   });
 }
 
+// Disk free alerts on used space, so it is shown and plotted as used.
+const plotValue = (app, r) => app.type === 'health' ? r.latency_ms : app.type === 'disk_free' ? Math.round((r.total - r.value) * 100) / 100 : r.value;
+const thresholdLabel = (a) => a.type === 'disk_free' ? `alert if used > ${a.threshold}` : `threshold ${a.threshold}`;
+
 function findApp(id) {
   for (const g of overview) for (const a of g.apps) if (a.id === id) return { ...a, group: g.group, location: g.location };
 }
@@ -191,8 +195,8 @@ function chartConfig(app, rows, mini) {
   const accent = css('--accent'), grid = css('--border'), muted = css('--muted');
   const labels = rows.map(r => new Date(r.created_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }));
   const datasets = [{
-    label: TYPE_LABEL[app.type],
-    data: rows.map(r => r.status === 'error' ? null : (app.type === 'health' ? r.latency_ms : r.value)),
+    label: app.type === 'disk_free' ? 'Disk used' : TYPE_LABEL[app.type],
+    data: rows.map(r => r.status === 'error' ? null : plotValue(app, r)),
     borderColor: accent, backgroundColor: accent + '22', fill: true, tension: .3, borderWidth: mini ? 1.5 : 2,
     pointRadius: mini ? 0 : rows.map(r => r.status === 'ok' ? 0 : 3),
     pointBackgroundColor: rows.map(r => css('--' + r.status)),
@@ -212,7 +216,7 @@ function chartConfig(app, rows, mini) {
       scales: mini ? { x: { display: false }, y: { display: false } } : {
         x: { ticks: { color: muted, maxTicksLimit: 8 }, grid: { color: grid } },
         y: { ticks: { color: muted }, grid: { color: grid },
-             title: { display: true, color: muted, text: app.type === 'health' ? 'latency (ms)' : (rows.at(-1)?.unit || '') } },
+             title: { display: true, color: muted, text: app.type === 'health' ? 'latency (ms)' : (rows.at(-1)?.unit || '') + (app.type === 'disk_free' ? ' used' : '') } },
       },
     },
   };
@@ -228,7 +232,7 @@ async function loadSpark(id, canvas) {
 async function openDetail(id) {
   detailApp = findApp(id);
   $('#d-title').textContent = `${detailApp.group} / ${detailApp.name}`;
-  $('#d-meta').textContent = `${detailApp.location ? detailApp.location + ' · ' : ''}${TYPE_LABEL[detailApp.type]} · ${detailApp.source} · schedule "${detailApp.schedule}" · threshold ${detailApp.threshold}`;
+  $('#d-meta').textContent = `${detailApp.location ? detailApp.location + ' · ' : ''}${TYPE_LABEL[detailApp.type]} · ${detailApp.source} · schedule "${detailApp.schedule}" · ${thresholdLabel(detailApp)}`;
   if (!$('#detail').open) $('#detail').showModal();
   const res = await api(`/api/history/${encodeURIComponent(id)}?hours=${$('#range').value}`);
   detailChart?.destroy();

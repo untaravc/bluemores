@@ -183,10 +183,10 @@ func (m *Monitor) run(app config.App) store.Result {
 	r.Status = store.StatusOK
 	switch app.Type {
 	case config.TypeDiskFree:
-		// Free space dropping below the threshold is bad.
-		if r.Value < threshold {
+		// The exporter reports free space; alert when used space (total - free) exceeds the threshold.
+		if used := r.Total - r.Value; used > threshold {
 			r.Status = store.StatusAlert
-			r.Message = fmt.Sprintf("free %.2f%s below threshold %v", r.Value, unit, threshold)
+			r.Message = fmt.Sprintf("used %.2f%s above threshold %v (%.2f%s free)", used, unit, threshold, r.Value, unit)
 		}
 	default:
 		if r.Value > threshold {

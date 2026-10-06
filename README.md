@@ -36,7 +36,7 @@ See `config.example.json`. Per app:
 - `schedule`: standard 5-field cron (`*/5 * * * *`) or descriptors (`@every 30s`, `@hourly`)
 - `threshold`:
   - `processor` / `memory`: alert when **value > threshold**
-  - `disk_free`: alert when **free < threshold**
+  - `disk_free`: alert when **used (total − free) > threshold**, in GB
   - `health`: `"true"` = expect 2xx (and not `{"status": false}`)
 - `notification`: Discord webhook URL (optional)
 - `key`: bearer key for the exporter; can also be set once per group as `"key"`
