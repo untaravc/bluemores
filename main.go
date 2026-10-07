@@ -29,10 +29,19 @@ func env(key, def string) string {
 func main() {
 	_ = godotenv.Load()
 
+	enableExporter := env("ENABLE_EXPORTER", "true") == "true"
+	enableMonitor := env("ENABLE_MONITOR", "true") == "true"
+	if !enableExporter && !enableMonitor {
+		log.Fatal("nothing to run: set ENABLE_EXPORTER and/or ENABLE_MONITOR to true")
+	}
+
 	exporterKey := os.Getenv("EXPORTER_KEY")
+	if enableExporter && exporterKey == "" {
+		log.Fatal("ENABLE_EXPORTER=true requires EXPORTER_KEY")
+	}
 	passphrase := os.Getenv("DASHBOARD_PASSPHRASE")
-	if exporterKey == "" && passphrase == "" {
-		log.Fatal("nothing to run: set EXPORTER_KEY (exporter mode) and/or DASHBOARD_PASSPHRASE (monitor + dashboard mode)")
+	if enableMonitor && passphrase == "" {
+		log.Fatal("ENABLE_MONITOR=true requires DASHBOARD_PASSPHRASE")
 	}
 
 	app := fiber.New(fiber.Config{AppName: "bluemores", DisableStartupMessage: true})
@@ -41,13 +50,13 @@ func main() {
 		app.Use(logger.New())
 	}
 
-	if exporterKey != "" {
+	if enableExporter {
 		web.RegisterExporter(app, exporterKey, env("DISK_PATH", "/"))
 		log.Println("exporter enabled: /mon/proc, /mon/mem, /mon/dfree")
 	}
 
 	var mon *monitor.Monitor
-	if passphrase != "" {
+	if enableMonitor {
 		groups, err := config.Load(env("CONFIG_PATH", "config.json"))
 		if err != nil {
 			log.Fatal(err)
@@ -70,6 +79,10 @@ func main() {
 		}
 		web.RegisterDashboard(app, passphrase, env("COOKIE_SECURE", "false") == "true", mon, st)
 		log.Println("monitor + dashboard enabled")
+	} else {
+		app.Get("/", func(c *fiber.Ctx) error {
+			return c.JSON(fiber.Map{"status": "ok"})
+		})
 	}
 
 	go func() {

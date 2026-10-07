@@ -32,10 +32,10 @@
       {
         "name": "BE Health",
         "type": "health",
-        "source": "https://tries.co.id/health",
+        "source": "https://app.pusatherbalcina.com/healthz",
         "schedule": "0 0 * * *",
         "threshold": "true",
-        "notification": "https://discord.com/api/webhooks/xxx"
+        "notification": ""
       }
     ]
   }

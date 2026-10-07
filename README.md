@@ -6,8 +6,10 @@ One binary, two roles — enable either or both via `.env`:
 
 | Role | Enabled by | What it does |
 |---|---|---|
-| **Exporter** | `EXPORTER_KEY` | Serves `GET /mon/proc`, `/mon/mem`, `/mon/dfree` (requires `Authorization: Bearer <EXPORTER_KEY>`) |
-| **Monitor + dashboard** | `DASHBOARD_PASSPHRASE` | Polls the targets in `config.json` on cron schedules, stores results in SQLite, sends Discord alerts, serves the dashboard at `/` |
+| **Exporter** | `ENABLE_EXPORTER=true` + `EXPORTER_KEY` | Serves `GET /mon/proc`, `/mon/mem`, `/mon/dfree` (requires `Authorization: Bearer <EXPORTER_KEY>`) |
+| **Monitor + dashboard** | `ENABLE_MONITOR=true` + `DASHBOARD_PASSPHRASE` | Polls the targets in `config.json` on cron schedules, stores results in SQLite, sends Discord alerts, serves the dashboard at `/` |
+
+Both flags default to `true`. With `ENABLE_MONITOR=false`, `GET /` only returns `{"status":"ok"}` (handy as a health check on exporter-only servers).
 
 ## Quick start
 
