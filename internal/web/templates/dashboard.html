@@ -22,7 +22,27 @@
   select, .btn { padding:6px 10px; border-radius:7px; border:1px solid var(--border); background:var(--card); color:var(--text); font:inherit; cursor:pointer; text-decoration:none; }
   .btn:hover { border-color:var(--accent); }
   main { max-width:1280px; margin:0 auto; padding:16px; }
-  .group-head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin:22px 0 10px; }
+  .groups { display:flex; flex-wrap:wrap; gap:16px; margin-top:6px; }
+  .group { flex:1 1 100%; min-width:0; }
+  .group-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:10px 0; cursor:pointer; user-select:none; }
+  .group-head:hover h2 { color:var(--text); }
+  .chev { color:var(--muted); font-size:12px; width:12px; transition:transform .15s; }
+  .group.collapsed .chev { transform:rotate(-90deg); }
+  /* Collapsed groups become side-by-side status tiles, readable from across the room. */
+  .group.collapsed { flex:1 1 340px; max-width:100%; background:var(--card); border:1px solid var(--border); border-left:6px solid var(--none);
+                     border-radius:12px; padding:4px 16px 14px; }
+  .group.collapsed.ok { border-left-color:var(--ok); } .group.collapsed.alert { border-left-color:var(--alert); } .group.collapsed.error { border-left-color:var(--error); }
+  .group.collapsed .group-head .badge { margin-left:auto; font-size:12px; }
+  .group.collapsed .grid, .group:not(.collapsed) .thumb { display:none; }
+  .thumb { display:flex; flex-direction:column; gap:8px; }
+  .t-row { display:grid; grid-template-columns:12px minmax(0, 1fr) auto; align-items:center; column-gap:10px; }
+  .t-dot { width:12px; height:12px; border-radius:50%; background:var(--none); }
+  .t-dot.ok { background:var(--ok); } .t-dot.alert { background:var(--alert); } .t-dot.error { background:var(--error); }
+  .t-name { font-size:15px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .t-val { font-size:17px; font-weight:700; font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+  .t-val small { font-size:12px; color:var(--muted); font-weight:500; }
+  .t-row.alert .t-val { color:var(--alert); } .t-row.error .t-val { color:var(--error); }
+  .t-row .bar { grid-column:2 / 4; height:4px; margin:2px 0 0; }
   h2 { font-size:15px; margin:0; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
   .group-desc { font-size:13px; color:var(--muted); }
   .loc { font-size:11px; font-weight:600; padding:1px 8px; border-radius:99px; border:1px solid var(--border); color:var(--text); }
@@ -73,6 +93,7 @@
     <option value="168">7 days</option>
     <option value="720">30 days</option>
   </select>
+  <button class="btn" id="toggle-all">Expand all</button>
   <button class="btn" id="refresh">Refresh</button>
   <button class="btn danger" id="purge-open">Delete data</button>
   <a class="btn" href="/logout">Logout</a>
@@ -124,6 +145,12 @@ const TYPE_LABEL = { processor:'CPU', memory:'Memory', disk_free:'Disk used', he
 const charts = {};
 let overview = [];
 let detailApp = null, detailChart = null;
+const RANK = { alert: 3, error: 2, ok: 1, none: 0 };
+
+// Groups are collapsed by default; the ones the viewer expanded are remembered per browser.
+let expanded = new Set();
+try { expanded = new Set(JSON.parse(localStorage.getItem('bluemores.expanded') || '[]')); } catch {}
+function saveExpanded() { try { localStorage.setItem('bluemores.expanded', JSON.stringify([...expanded])); } catch {} }
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
@@ -159,13 +186,28 @@ function render() {
   $('#summary').innerHTML = `<span><b>${counts.ok}</b> ok</span><span><b>${counts.alert}</b> alert</span><span><b>${counts.error}</b> error</span>`;
 
   if (!overview.length) { $('#main').innerHTML = '<div class="empty">No apps configured.</div>'; return; }
-  $('#main').innerHTML = overview.map(g => `
+  $('#toggle-all').textContent = overview.every(g => expanded.has(g.group)) ? 'Collapse all' : 'Expand all';
+  $('#main').innerHTML = '<div class="groups">' + overview.map(g => {
+    const open = expanded.has(g.group);
+    const worst = g.apps.reduce((w, a) => { const st = a.latest?.status || 'none'; return RANK[st] > RANK[w] ? st : w; }, 'none');
+    return `<section class="group ${open ? '' : 'collapsed'} ${worst}" data-group="${esc(g.group)}">
     <div class="group-head">
+      <span class="chev">▼</span>
       <h2>${esc(g.group)}</h2>
       ${g.location ? `<span class="loc" title="Location">📍 ${esc(g.location)}</span>` : ''}
       ${g.description ? `<span class="group-desc">${esc(g.description)}</span>` : ''}
+      ${open ? '' : `<span class="badge ${worst}">${worst === 'none' ? 'pending' : worst}</span>`}
     </div>
-    <div class="grid">${g.apps.map(a => {
+    ${open ? '' : `<div class="thumb">${g.apps.map(a => {
+      const r = a.latest, st = r?.status || 'none', f = fmt(a, r);
+      return `<div class="t-row ${st}" title="${esc(r?.message || '')}">
+        <span class="t-dot ${st}"></span>
+        <span class="t-name">${esc(a.name)}</span>
+        <span class="t-val">${esc(f.value)}${f.pct != null ? ` <small>${f.pct.toFixed(0)}%</small>` : ''}</span>
+        ${f.pct != null ? `<div class="bar"><i style="width:${Math.min(100, f.pct)}%; background:${css('--' + (st === 'alert' || st === 'error' ? st : 'accent'))}"></i></div>` : ''}
+      </div>`;
+    }).join('')}</div>`}
+    ${open ? `<div class="grid">${g.apps.map(a => {
       const r = a.latest, st = r?.status || 'none', f = fmt(a, r);
       return `<div class="card ${st}" data-id="${esc(a.id)}">
         <div class="row"><span class="name">${esc(a.name)}</span><span class="badge ${st}">${r ? st : 'pending'}</span></div>
@@ -175,7 +217,17 @@ function render() {
         ${r && r.status !== 'ok' && r.message ? `<div class="msg" title="${esc(r.message)}">${esc(r.message)}</div>` : ''}
         <div class="spark"><canvas></canvas></div>
       </div>`;
-    }).join('')}</div>`).join('');
+    }).join('')}</div>` : ''}
+    </section>`;
+  }).join('') + '</div>';
+
+  document.querySelectorAll('.group-head').forEach(el => {
+    el.onclick = () => {
+      const name = el.parentElement.dataset.group;
+      expanded.has(name) ? expanded.delete(name) : expanded.add(name);
+      saveExpanded(); render();
+    };
+  });
 
   document.querySelectorAll('.card').forEach(el => {
     el.onclick = () => openDetail(el.dataset.id);
@@ -246,6 +298,10 @@ async function load() {
 }
 
 $('#refresh').onclick = load;
+$('#toggle-all').onclick = () => {
+  expanded = overview.every(g => expanded.has(g.group)) ? new Set() : new Set(overview.map(g => g.group));
+  saveExpanded(); render();
+};
 $('#range').onchange = () => { load(); if ($('#detail').open) openDetail(detailApp.id); };
 $('#d-close').onclick = () => $('#detail').close();
 $('#d-check').onclick = async () => {
