@@ -4,6 +4,7 @@
     "description": "Server Tries",
     "location": "GCP",
     "key": "change-me-exporter-key",
+    "status": true,
     "apps": [
       {
         "name": "Processor",
@@ -11,7 +12,8 @@
         "source": "https://mon.tries.co.id/mon/proc",
         "schedule": "* * * * *",
         "threshold": "300",
-        "notification": "https://discord.com/api/webhooks/xxx"
+        "notification": "https://discord.com/api/webhooks/xxx",
+        "status": true
       },
       {
         "name": "Memory",
@@ -19,7 +21,8 @@
         "source": "https://mon.tries.co.id/mon/mem",
         "schedule": "*/5 * * * *",
         "threshold": "3000",
-        "notification": "https://discord.com/api/webhooks/xxx"
+        "notification": "https://discord.com/api/webhooks/xxx",
+        "status": true
       },
       {
         "name": "Disk Free",
@@ -27,7 +30,8 @@
         "source": "https://mon.tries.co.id/mon/dfree",
         "schedule": "0 0 * * *",
         "threshold": "100",
-        "notification": "https://discord.com/api/webhooks/xxx"
+        "notification": "https://discord.com/api/webhooks/xxx",
+        "status": true
       },
       {
         "name": "BE Health",
@@ -35,7 +39,8 @@
         "source": "https://app.pusatherbalcina.com/healthz",
         "schedule": "0 0 * * *",
         "threshold": "true",
-        "notification": ""
+        "notification": "",
+        "status": false
       }
     ]
   }

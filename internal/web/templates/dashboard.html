@@ -120,7 +120,7 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const TYPE_LABEL = { processor:'CPU', memory:'Memory', disk_free:'Disk free', health:'Health' };
+const TYPE_LABEL = { processor:'CPU', memory:'Memory', disk_free:'Disk used', health:'Health' };
 const charts = {};
 let overview = [];
 let detailApp = null, detailChart = null;
@@ -146,9 +146,9 @@ function fmt(app, r) {
   const pct = r.total ? (r.value / r.total) * 100 : null;
   const unit = r.unit ? ' ' + r.unit : '';
   if (app.type === 'disk_free') {
-    // Value is free space; the bar shows used space so a full bar means a full disk.
-    const used = r.total ? 100 - pct : null;
-    return { value: r.value.toLocaleString(), sub: `${unit} free of ${r.total.toLocaleString()}${unit} · ${used?.toFixed(0)}% used`, pct: used };
+    // Value is free space; the card shows used space (what the threshold checks) so a full bar means a full disk.
+    const used = Math.round((r.total - r.value) * 100) / 100;
+    return { value: used.toLocaleString(), sub: `/ ${r.total.toLocaleString()}${unit} used · ${r.value.toLocaleString()}${unit} free`, pct: r.total ? 100 - pct : null };
   }
   return { value: r.value.toLocaleString(), sub: `/ ${r.total.toLocaleString()}${unit} · ${pct?.toFixed(0)}%`, pct };
 }

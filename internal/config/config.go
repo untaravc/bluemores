@@ -30,6 +30,8 @@ type App struct {
 	Notification string `json:"notification"`
 	// Key is the bearer token sent to the exporter. Falls back to the group key.
 	Key string `json:"key,omitempty"`
+	// Status enables the app; only apps with "status": true are checked and shown.
+	Status bool `json:"status"`
 }
 
 type Group struct {
@@ -37,7 +39,9 @@ type Group struct {
 	Description string `json:"description,omitempty"`
 	Location    string `json:"location,omitempty"`
 	Key         string `json:"key,omitempty"`
-	Apps        []App  `json:"apps"`
+	// Status disables the whole group when false; omitted means enabled.
+	Status *bool `json:"status,omitempty"`
+	Apps   []App `json:"apps"`
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -46,7 +50,8 @@ func slug(s string) string {
 	return strings.Trim(slugRe.ReplaceAllString(strings.ToLower(s), "-"), "-")
 }
 
-// Load reads and validates the monitor config file.
+// Load reads and validates the monitor config file. Disabled groups and apps
+// (status false) are dropped, so they are neither scheduled nor displayed.
 func Load(path string) ([]Group, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -58,13 +63,21 @@ func Load(path string) ([]Group, error) {
 	}
 
 	seen := map[string]bool{}
+	enabled := []Group{}
 	for gi := range groups {
 		g := &groups[gi]
 		if g.Group == "" {
 			return nil, fmt.Errorf("group #%d: missing group name", gi+1)
 		}
+		if g.Status != nil && !*g.Status {
+			continue
+		}
+		apps := []App{}
 		for ai := range g.Apps {
 			a := &g.Apps[ai]
+			if !a.Status {
+				continue
+			}
 			a.Group = g.Group
 			a.ID = slug(g.Group) + "--" + slug(a.Name)
 			if seen[a.ID] {
@@ -77,9 +90,14 @@ func Load(path string) ([]Group, error) {
 			if err := a.validate(); err != nil {
 				return nil, fmt.Errorf("%s / %s: %w", g.Group, a.Name, err)
 			}
+			apps = append(apps, *a)
+		}
+		if len(apps) > 0 {
+			g.Apps = apps
+			enabled = append(enabled, *g)
 		}
 	}
-	return groups, nil
+	return enabled, nil
 }
 
 func (a *App) validate() error {
