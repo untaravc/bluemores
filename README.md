@@ -40,7 +40,8 @@ See `config.example.json`. Per app:
   - `processor` / `memory`: alert when **value > threshold**
   - `disk_free`: alert when **used (total − free) > threshold**, in GB
   - `health`: `"true"` = expect 2xx (and not `{"status": false}`)
-- `notification`: Discord webhook URL (optional)
+- `notification`: Discord webhook URL (optional); can also be set once per group as `"notification"`, used by apps that leave it empty
+- `note`: free text shown in the app's detail modal on the dashboard (optional)
 - `key`: bearer key for the exporter; can also be set once per group as `"key"`
 - `status`: only apps with `"status": true` are checked and shown on the dashboard (omitted = disabled). A group can also set `"status": false` to disable all its apps (omitted = enabled).
 

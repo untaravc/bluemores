@@ -59,6 +59,7 @@
   .value small { font-size:13px; color:var(--muted); font-weight:500; }
   .bar { height:6px; background:var(--track); border-radius:99px; overflow:hidden; margin:6px 0; }
   .bar > i { display:block; height:100%; background:var(--accent); }
+  .note { margin-top:10px; padding:8px 10px; border-left:3px solid var(--muted); font-size:13px; white-space:pre-wrap; word-break:break-word; }
   .meta { color:var(--muted); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .msg { font-size:12px; color:var(--alert); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .card.error .msg { color:var(--error); }
@@ -111,6 +112,7 @@
       <button class="btn" id="d-close">Close</button>
     </div>
   </div>
+  <div class="note" id="d-note" hidden></div>
   <div class="big"><canvas id="d-chart"></canvas></div>
 </dialog>
 
@@ -285,6 +287,8 @@ async function openDetail(id) {
   detailApp = findApp(id);
   $('#d-title').textContent = `${detailApp.group} / ${detailApp.name}`;
   $('#d-meta').textContent = `${detailApp.location ? detailApp.location + ' · ' : ''}${TYPE_LABEL[detailApp.type]} · ${detailApp.source} · schedule "${detailApp.schedule}" · ${thresholdLabel(detailApp)}`;
+  $('#d-note').textContent = detailApp.note || '';
+  $('#d-note').hidden = !detailApp.note;
   if (!$('#detail').open) $('#detail').showModal();
   const res = await api(`/api/history/${encodeURIComponent(id)}?hours=${$('#range').value}`);
   detailChart?.destroy();

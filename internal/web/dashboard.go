@@ -128,6 +128,7 @@ type appView struct {
 	Source    string        `json:"source"`
 	Schedule  string        `json:"schedule"`
 	Threshold string        `json:"threshold"`
+	Note      string        `json:"note,omitempty"`
 	Latest    *store.Result `json:"latest"`
 }
 
@@ -147,7 +148,7 @@ func (d *Dashboard) overview(c *fiber.Ctx) error {
 	for _, g := range d.mon.Groups() {
 		gv := groupView{Group: g.Group, Description: g.Description, Location: g.Location, Apps: []appView{}}
 		for _, a := range g.Apps {
-			av := appView{ID: a.ID, Name: a.Name, Type: a.Type, Source: a.Source, Schedule: a.Schedule, Threshold: a.Threshold}
+			av := appView{ID: a.ID, Name: a.Name, Type: a.Type, Source: a.Source, Schedule: a.Schedule, Threshold: a.Threshold, Note: a.Note}
 			if r, ok := latest[a.ID]; ok {
 				av.Latest = &r
 			}

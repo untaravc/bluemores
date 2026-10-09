@@ -28,6 +28,8 @@ type App struct {
 	Schedule     string `json:"schedule"`
 	Threshold    string `json:"threshold"`
 	Notification string `json:"notification"`
+	// Note is free text shown in the dashboard detail modal.
+	Note string `json:"note,omitempty"`
 	// Key is the bearer token sent to the exporter. Falls back to the group key.
 	Key string `json:"key,omitempty"`
 	// Status enables the app; only apps with "status": true are checked and shown.
@@ -39,6 +41,8 @@ type Group struct {
 	Description string `json:"description,omitempty"`
 	Location    string `json:"location,omitempty"`
 	Key         string `json:"key,omitempty"`
+	// Notification is the default webhook for apps that don't set their own.
+	Notification string `json:"notification,omitempty"`
 	// Status disables the whole group when false; omitted means enabled.
 	Status *bool `json:"status,omitempty"`
 	Apps   []App `json:"apps"`
@@ -86,6 +90,9 @@ func Load(path string) ([]Group, error) {
 			seen[a.ID] = true
 			if a.Key == "" {
 				a.Key = g.Key
+			}
+			if a.Notification == "" {
+				a.Notification = g.Notification
 			}
 			if err := a.validate(); err != nil {
 				return nil, fmt.Errorf("%s / %s: %w", g.Group, a.Name, err)
